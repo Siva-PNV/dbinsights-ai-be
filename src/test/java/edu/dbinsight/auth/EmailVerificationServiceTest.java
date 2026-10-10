@@ -20,8 +20,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -35,27 +33,54 @@ class EmailVerificationServiceTest {
     void registrationCreatesAnAccountAndEmailsAHashedToken() throws Exception {
         AppUserRepository users = mock(AppUserRepository.class);
         EmailVerificationTokenRepository tokens = mock(EmailVerificationTokenRepository.class);
-        JavaMailSender mailSender = mock(JavaMailSender.class);
+        EmailSender emailSender = mock(EmailSender.class);
         PasswordEncoder encoder = new BCryptPasswordEncoder();
         when(users.save(org.mockito.ArgumentMatchers.any(AppUserEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        AppUserEntity created = service(users, tokens, encoder, mailSender, true)
+        AppUserEntity created = service(users, tokens, encoder, emailSender, true)
                 .register("Test User", EMAIL, "StrongPass123");
 
         assertEquals(EMAIL, created.getEmail());
         org.mockito.ArgumentCaptor<EmailVerificationTokenEntity> tokenCaptor =
                 org.mockito.ArgumentCaptor.forClass(EmailVerificationTokenEntity.class);
-        org.mockito.ArgumentCaptor<SimpleMailMessage> messageCaptor =
-                org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
+        org.mockito.ArgumentCaptor<String> messageCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
         verify(tokens).save(tokenCaptor.capture());
-        verify(mailSender).send(messageCaptor.capture());
-        Matcher matcher = TOKEN_PATTERN.matcher(messageCaptor.getValue().getText());
+        verify(emailSender).send(
+                org.mockito.ArgumentMatchers.eq("no-reply@example.com"),
+                org.mockito.ArgumentMatchers.eq(EMAIL),
+                org.mockito.ArgumentMatchers.eq("Verify your DBInsight email"),
+                messageCaptor.capture());
+        Matcher matcher = TOKEN_PATTERN.matcher(messageCaptor.getValue());
         assertTrue(matcher.find());
         String hash = (String) ReflectionTestUtils.getField(tokenCaptor.getValue(), "tokenHash");
         assertEquals(hashToken(matcher.group(1)), hash);
         assertNotEquals(matcher.group(1), hash);
         assertTrue(encoder.matches("StrongPass123", created.getPasswordHash()));
+    }
+
+    @Test
+    void registrationReturnsServiceUnavailableWhenVerificationEmailCannotBeSent() {
+        AppUserRepository users = mock(AppUserRepository.class);
+        EmailVerificationTokenRepository tokens = mock(EmailVerificationTokenRepository.class);
+        EmailSender emailSender = mock(EmailSender.class);
+        when(users.save(org.mockito.ArgumentMatchers.any(AppUserEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        org.mockito.Mockito.doThrow(new EmailDeliveryException("Provider authentication failed"))
+                .when(emailSender).send(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service(users, tokens, new BCryptPasswordEncoder(), emailSender, true)
+                        .register("Test User", EMAIL, "StrongPass123"));
+
+        assertEquals(503, exception.getStatusCode().value());
+        assertEquals("Unable to send the verification email. Check the email provider configuration and try again.",
+                exception.getReason());
     }
 
     @Test
@@ -67,7 +92,7 @@ class EmailVerificationServiceTest {
         when(tokens.findForUpdateByTokenHash(hashToken(rawToken))).thenReturn(Optional.of(token));
 
         service(mock(AppUserRepository.class), tokens, new BCryptPasswordEncoder(),
-                mock(JavaMailSender.class), true).verify(rawToken);
+                mock(EmailSender.class), true).verify(rawToken);
 
         assertTrue(token.getVerifiedAt() != null);
     }
@@ -82,7 +107,7 @@ class EmailVerificationServiceTest {
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> service(mock(AppUserRepository.class), tokens, new BCryptPasswordEncoder(),
-                        mock(JavaMailSender.class), true).verify(rawToken));
+                        mock(EmailSender.class), true).verify(rawToken));
 
         assertEquals(400, exception.getStatusCode().value());
     }
@@ -94,15 +119,15 @@ class EmailVerificationServiceTest {
         when(tokens.findByUserUserId(user.getUserId())).thenReturn(Optional.empty());
 
         assertTrue(service(mock(AppUserRepository.class), tokens, new BCryptPasswordEncoder(),
-                mock(JavaMailSender.class), true).isVerified(user));
+                mock(EmailSender.class), true).isVerified(user));
     }
 
     private static EmailVerificationService service(AppUserRepository users,
                                                     EmailVerificationTokenRepository tokens,
                                                     PasswordEncoder encoder,
-                                                    JavaMailSender mailSender,
+                                                    EmailSender emailSender,
                                                     boolean enabled) {
-        return new EmailVerificationService(users, tokens, encoder, mailSender, enabled,
+        return new EmailVerificationService(users, tokens, encoder, emailSender, enabled,
                 "no-reply@example.com", "http://localhost:5173", 24);
     }
 

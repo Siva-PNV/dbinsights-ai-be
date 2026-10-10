@@ -13,11 +13,10 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,13 +24,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class EmailVerificationService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EmailVerificationService.class);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Duration RESEND_DELAY = Duration.ofMinutes(1);
 
     private final AppUserRepository appUserRepository;
     private final EmailVerificationTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
+    private final EmailSender emailSender;
     private final boolean enabled;
     private final String fromAddress;
     private final String frontendOrigin;
@@ -40,7 +40,7 @@ public class EmailVerificationService {
     public EmailVerificationService(AppUserRepository appUserRepository,
                                     EmailVerificationTokenRepository tokenRepository,
                                     PasswordEncoder passwordEncoder,
-                                    JavaMailSender mailSender,
+    EmailSender emailSender,
                                     @Value("${app.auth.email-verification.enabled:false}") boolean enabled,
                                     @Value("${app.auth.password-reset.from:no-reply@localhost}") String fromAddress,
                                     @Value("${app.auth.password-reset.frontend-origin:http://localhost:5173}") String frontendOrigin,
@@ -48,7 +48,7 @@ public class EmailVerificationService {
         this.appUserRepository = appUserRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
-        this.mailSender = mailSender;
+        this.emailSender = emailSender;
         this.enabled = enabled;
         this.fromAddress = fromAddress;
         this.frontendOrigin = frontendOrigin;
@@ -114,19 +114,16 @@ public class EmailVerificationService {
                 user, hashToken(rawToken), now.plus(tokenLifetime), now));
 
         String verificationUrl = frontendOrigin.replaceAll("/+$", "") + "/#verifyToken=" + rawToken;
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(user.getEmail());
-        message.setSubject("Verify your DBInsight email");
-        message.setText("Welcome to DBInsight.\n\n"
+        String text = "Welcome to DBInsight.\n\n"
                 + "Verify your email address using this one-time link within "
                 + tokenLifetime.toHours() + " hours:\n"
-                + verificationUrl + "\n\nIf you did not create this account, you can ignore this email.");
+                + verificationUrl + "\n\nIf you did not create this account, you can ignore this email.";
         try {
-            mailSender.send(message);
-        } catch (MailException exception) {
+            emailSender.send(fromAddress, user.getEmail(), "Verify your DBInsight email", text);
+        } catch (EmailDeliveryException exception) {
+            LOGGER.error("Failed to send email verification message.", exception);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Unable to send the verification email. Check the SMTP configuration and try again.",
+                    "Unable to send the verification email. Check the email provider configuration and try again.",
                     exception);
         }
     }

@@ -23,8 +23,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,12 +35,12 @@ class PasswordResetServiceTest {
     void unknownEmailDoesNotSendMailOrCreateToken() {
         AppUserRepository users = mock(AppUserRepository.class);
         PasswordResetTokenRepository tokens = mock(PasswordResetTokenRepository.class);
-        JavaMailSender mailSender = mock(JavaMailSender.class);
+        EmailSender emailSender = mock(EmailSender.class);
         when(users.findByEmail(EMAIL)).thenReturn(Optional.empty());
 
-        service(users, tokens, mailSender, true).requestReset(EMAIL);
+        service(users, tokens, emailSender, true).requestReset(EMAIL);
 
-        verifyNoInteractions(tokens, mailSender);
+        verifyNoInteractions(tokens, emailSender);
     }
 
     @Test
@@ -50,20 +48,24 @@ class PasswordResetServiceTest {
         AppUserEntity user = user();
         AppUserRepository users = mock(AppUserRepository.class);
         PasswordResetTokenRepository tokens = mock(PasswordResetTokenRepository.class);
-        JavaMailSender mailSender = mock(JavaMailSender.class);
+        EmailSender emailSender = mock(EmailSender.class);
         when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
         when(tokens.findFirstByUserUserIdOrderByCreatedAtDesc(user.getUserId())).thenReturn(Optional.empty());
 
-        service(users, tokens, mailSender, true).requestReset(EMAIL);
+        service(users, tokens, emailSender, true).requestReset(EMAIL);
 
         org.mockito.ArgumentCaptor<PasswordResetTokenEntity> tokenCaptor =
                 org.mockito.ArgumentCaptor.forClass(PasswordResetTokenEntity.class);
-        org.mockito.ArgumentCaptor<SimpleMailMessage> messageCaptor =
-                org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
+        org.mockito.ArgumentCaptor<String> messageCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
         verify(tokens).save(tokenCaptor.capture());
-        verify(mailSender).send(messageCaptor.capture());
+        verify(emailSender).send(
+                org.mockito.ArgumentMatchers.eq("no-reply@example.com"),
+                org.mockito.ArgumentMatchers.eq(EMAIL),
+                org.mockito.ArgumentMatchers.eq("Reset your DBInsight password"),
+                messageCaptor.capture());
 
-        Matcher matcher = RESET_TOKEN_PATTERN.matcher(messageCaptor.getValue().getText());
+        Matcher matcher = RESET_TOKEN_PATTERN.matcher(messageCaptor.getValue());
         assertTrue(matcher.find());
         String rawToken = matcher.group(1);
         String storedHash = (String) ReflectionTestUtils.getField(tokenCaptor.getValue(), "tokenHash");
@@ -84,7 +86,7 @@ class PasswordResetServiceTest {
         when(tokens.findByUserUserIdAndConsumedAtIsNull(user.getUserId())).thenReturn(List.of(resetToken));
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-        service(users, tokens, mock(JavaMailSender.class), true).resetPassword(rawToken, "newSecurePass123");
+        service(users, tokens, mock(EmailSender.class), true).resetPassword(rawToken, "newSecurePass123");
 
         assertTrue(encoder.matches("newSecurePass123", user.getPasswordHash()));
         assertTrue(resetToken.getConsumedAt() != null);
@@ -99,7 +101,7 @@ class PasswordResetServiceTest {
         when(tokens.findForUpdateByTokenHash(tokenHash(rawToken))).thenReturn(Optional.of(expiredToken));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> service(mock(AppUserRepository.class), tokens, mock(JavaMailSender.class), true)
+                () -> service(mock(AppUserRepository.class), tokens, mock(EmailSender.class), true)
                         .resetPassword(rawToken, "newSecurePass123"));
 
         assertEquals(400, exception.getStatusCode().value());
@@ -110,7 +112,7 @@ class PasswordResetServiceTest {
         PasswordResetService service = service(
                 mock(AppUserRepository.class),
                 mock(PasswordResetTokenRepository.class),
-                mock(JavaMailSender.class),
+                mock(EmailSender.class),
                 false);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -121,9 +123,9 @@ class PasswordResetServiceTest {
 
     private static PasswordResetService service(AppUserRepository users,
                                                 PasswordResetTokenRepository tokens,
-                                                JavaMailSender mailSender,
+                                                EmailSender emailSender,
                                                 boolean enabled) {
-        return new PasswordResetService(users, tokens, mailSender, new BCryptPasswordEncoder(),
+        return new PasswordResetService(users, tokens, emailSender, new BCryptPasswordEncoder(),
                 enabled, "no-reply@example.com", "http://localhost:5173", 30);
     }
 

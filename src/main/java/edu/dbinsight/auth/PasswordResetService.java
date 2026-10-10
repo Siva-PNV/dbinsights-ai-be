@@ -13,11 +13,10 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,12 +24,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class PasswordResetService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PasswordResetService.class);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Duration RESEND_DELAY = Duration.ofMinutes(1);
 
     private final AppUserRepository appUserRepository;
     private final PasswordResetTokenRepository tokenRepository;
-    private final JavaMailSender mailSender;
+    private final EmailSender emailSender;
     private final PasswordEncoder passwordEncoder;
     private final boolean enabled;
     private final String fromAddress;
@@ -39,7 +39,7 @@ public class PasswordResetService {
 
     public PasswordResetService(AppUserRepository appUserRepository,
                                 PasswordResetTokenRepository tokenRepository,
-                                JavaMailSender mailSender,
+                                EmailSender emailSender,
                                 PasswordEncoder passwordEncoder,
                                 @Value("${app.auth.password-reset.enabled:false}") boolean enabled,
                                 @Value("${app.auth.password-reset.from:no-reply@localhost}") String fromAddress,
@@ -47,7 +47,7 @@ public class PasswordResetService {
                                 @Value("${app.auth.password-reset.token-ttl-minutes:30}") long tokenLifetimeMinutes) {
         this.appUserRepository = appUserRepository;
         this.tokenRepository = tokenRepository;
-        this.mailSender = mailSender;
+        this.emailSender = emailSender;
         this.passwordEncoder = passwordEncoder;
         this.enabled = enabled;
         this.fromAddress = fromAddress;
@@ -101,18 +101,15 @@ public class PasswordResetService {
         tokenRepository.save(new PasswordResetTokenEntity(user, hashToken(rawToken), now.plus(tokenLifetime), now));
 
         String resetUrl = frontendOrigin.replaceAll("/+$", "") + "/#resetToken=" + rawToken;
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(user.getEmail());
-        message.setSubject("Reset your DBInsight password");
-        message.setText("A password reset was requested for your DBInsight account.\n\n"
+        String text = "A password reset was requested for your DBInsight account.\n\n"
                 + "Use this one-time link within " + tokenLifetime.toMinutes() + " minutes:\n"
-                + resetUrl + "\n\nIf you did not request a reset, you can ignore this email.");
+                + resetUrl + "\n\nIf you did not request a reset, you can ignore this email.";
         try {
-            mailSender.send(message);
-        } catch (MailException exception) {
+            emailSender.send(fromAddress, user.getEmail(), "Reset your DBInsight password", text);
+        } catch (EmailDeliveryException exception) {
+            LOGGER.error("Failed to send password reset message.", exception);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Unable to send the password reset email. Check the SMTP configuration and try again.",
+                    "Unable to send the password reset email. Check the email provider configuration and try again.",
                     exception);
         }
     }
