@@ -44,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register", "/api/auth/login",
                                 "/api/auth/password/forgot", "/api/auth/password/reset",
                                 "/api/auth/email/verify", "/api/auth/email/verification/resend").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/alerts",
                                 "/api/alerts/rules",

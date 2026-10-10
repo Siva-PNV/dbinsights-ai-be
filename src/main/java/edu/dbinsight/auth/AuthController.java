@@ -4,6 +4,9 @@ import edu.dbinsight.persistence.AppUserEntity;
 import edu.dbinsight.persistence.AppUserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Locale;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.http.HttpStatus;
@@ -24,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = "${app.frontend-origin:http://localhost:5173}")
+@Tag(name = "Authentication", description = "Account registration, session login, email verification, and password recovery.")
 public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final AppUserRepository appUserRepository;
@@ -44,6 +48,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
+    @Operation(summary = "Register an account", description = "Creates an account. If email verification is enabled, the account must be verified before login.")
     public RegistrationResponse register(@RequestBody RegisterRequest request,
                                          HttpServletRequest httpRequest,
                                          HttpServletResponse httpResponse) {
@@ -73,6 +78,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @Operation(summary = "Sign in", description = "Authenticates the user and establishes a JSESSIONID session cookie.")
         public AuthResponse login(@RequestBody LoginRequest request,
                       HttpServletRequest httpRequest,
                       HttpServletResponse httpResponse) {
@@ -99,6 +105,7 @@ public class AuthController {
     }
 
     @GetMapping("/me")
+    @Operation(summary = "Get current account", security = @SecurityRequirement(name = "sessionCookie"))
     public AuthResponse currentUser(Authentication authentication) {
         AppUserEntity user = appUserRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sign in to continue."));
@@ -107,6 +114,7 @@ public class AuthController {
     }
 
     @PostMapping("/password/forgot")
+    @Operation(summary = "Request password reset", description = "Always returns a generic response to avoid disclosing whether an account exists.")
     public MessageResponse requestPasswordReset(@RequestBody PasswordResetRequest request) {
         String email = normalizeEmail(request.email());
         passwordResetService.requestReset(email);
@@ -114,12 +122,14 @@ public class AuthController {
     }
 
     @PostMapping("/email/verify")
+    @Operation(summary = "Verify email address")
     public MessageResponse verifyEmail(@RequestBody EmailVerificationRequest request) {
         emailVerificationService.verify(request.token());
         return new MessageResponse("Email verified. You can now sign in.");
     }
 
     @PostMapping("/email/verification/resend")
+    @Operation(summary = "Resend verification email", description = "A resend is rate-limited and returns a generic response.")
     public MessageResponse resendVerification(@RequestBody PasswordResetRequest request) {
         String email = normalizeEmail(request.email());
         emailVerificationService.resend(email);
@@ -127,6 +137,7 @@ public class AuthController {
     }
 
     @PostMapping("/password/reset")
+    @Operation(summary = "Reset password")
     public MessageResponse resetPassword(@RequestBody PasswordChangeRequest request,
                                          HttpServletRequest httpRequest) {
         passwordResetService.resetPassword(request.token(), request.password());
@@ -138,6 +149,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
+    @Operation(summary = "Sign out", security = @SecurityRequirement(name = "sessionCookie"))
     public void logout(HttpServletRequest request) {
         SecurityContextHolder.clearContext();
         if (request.getSession(false) != null) {

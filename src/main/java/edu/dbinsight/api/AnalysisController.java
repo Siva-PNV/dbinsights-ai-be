@@ -21,6 +21,9 @@ import edu.dbinsight.persistence.RecommendationPersistenceService;
 import edu.dbinsight.persistence.TelemetryPersistenceService;
 import java.util.List;
 import edu.dbinsight.persistence.AdminRequestGuard;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +42,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api")
 @CrossOrigin(origins = "${app.frontend-origin:http://localhost:5173}")
+@Tag(name = "Monitoring", description = "MySQL target management, health, schema, telemetry, recommendations, and alerts.")
 public class AnalysisController {
     private final DatabaseHealthService databaseHealthService;
     private final QueryTelemetryCollector queryTelemetryCollector;
@@ -74,11 +78,15 @@ public class AnalysisController {
     }
 
     @GetMapping("/databases")
+    @Operation(summary = "List accessible monitoring targets", security = @SecurityRequirement(name = "sessionCookie"))
     public List<DatabaseSummary> databases(Authentication authentication) {
         return monitoringPersistenceService.listDatabases(authentication.getName(), isAdmin(authentication));
     }
 
     @PostMapping("/databases")
+    @Operation(summary = "Register a MySQL monitoring target",
+            description = "Requires a signed-in user. Supply X-DBInsight-Token unless the session has ADMIN role.",
+            security = @SecurityRequirement(name = "sessionCookie"))
     public DatabaseSummary createDatabase(@RequestHeader(value = "X-DBInsight-Token", required = false) String token,
                                         @RequestBody DatabaseRegistrationRequest request,
                                         Authentication authentication) {
@@ -97,6 +105,7 @@ public class AnalysisController {
     }
 
     @DeleteMapping("/databases/{databaseId}")
+    @Operation(summary = "Remove a monitoring target", security = @SecurityRequirement(name = "sessionCookie"))
     public void removeDatabase(Authentication authentication, @PathVariable Long databaseId) {
         String databaseName = monitoringPersistenceService
                 .requireDatabaseAccess(databaseId, authentication.getName(), isAdmin(authentication))
@@ -113,12 +122,14 @@ public class AnalysisController {
     }
 
     @GetMapping("/metadata")
+    @Operation(summary = "Analyze target schema", security = @SecurityRequirement(name = "sessionCookie"))
     public LiveSchemaSummary metadata(@RequestParam(required = false) Long databaseId, Authentication authentication) {
         requireTargetAccess(databaseId, authentication);
         return schemaAnalysisService.analyze(databaseId);
     }
 
     @GetMapping("/queries")
+    @Operation(summary = "Get query telemetry", security = @SecurityRequirement(name = "sessionCookie"))
     public QueryTelemetry queries(@RequestParam(required = false) Long databaseId,
                                  @RequestParam(defaultValue = "false") boolean includeInternal,
                                  Authentication authentication) {
@@ -127,6 +138,7 @@ public class AnalysisController {
     }
 
     @GetMapping("/queries/slow")
+    @Operation(summary = "Get slow queries", security = @SecurityRequirement(name = "sessionCookie"))
     public QueryTelemetry slowQueries(@RequestParam(required = false) Long databaseId,
                                      @RequestParam(defaultValue = "false") boolean includeInternal,
                                      Authentication authentication) {
@@ -139,11 +151,13 @@ public class AnalysisController {
     }
 
     @GetMapping("/queries/history")
+    @Operation(summary = "Get query telemetry history", security = @SecurityRequirement(name = "sessionCookie"))
     public List<QueryTelemetry> queryHistory(Authentication authentication) {
         return telemetryPersistenceService.recentSnapshots(authentication.getName(), isAdmin(authentication));
     }
 
     @GetMapping("/schema/issues")
+    @Operation(summary = "List schema issues", security = @SecurityRequirement(name = "sessionCookie"))
     public List<IssueSummary> schemaIssues(@RequestParam(required = false) Long databaseId,
                                            Authentication authentication) {
         requireTargetAccess(databaseId, authentication);
@@ -151,12 +165,14 @@ public class AnalysisController {
     }
 
     @GetMapping("/health")
+    @Operation(summary = "Calculate database health", security = @SecurityRequirement(name = "sessionCookie"))
     public HealthScore health(@RequestParam(required = false) Long databaseId, Authentication authentication) {
         requireTargetAccess(databaseId, authentication);
         return databaseHealthService.calculate(databaseId);
     }
 
     @GetMapping("/health/history")
+    @Operation(summary = "Get health history", security = @SecurityRequirement(name = "sessionCookie"))
     public List<HealthScore> healthHistory(@RequestParam(required = false) Long databaseId,
                                            Authentication authentication) {
         requireTargetAccess(databaseId, authentication);
@@ -164,12 +180,14 @@ public class AnalysisController {
     }
 
     @GetMapping("/databases/{databaseId}/health")
+    @Operation(summary = "Calculate health for a target", security = @SecurityRequirement(name = "sessionCookie"))
     public HealthScore databaseHealth(@PathVariable Long databaseId, Authentication authentication) {
         requireTargetAccess(databaseId, authentication);
         return databaseHealthService.calculate(databaseId);
     }
 
     @GetMapping("/databases/{databaseId}/queries")
+    @Operation(summary = "Get query telemetry for a target", security = @SecurityRequirement(name = "sessionCookie"))
     public QueryTelemetry databaseQueries(@PathVariable Long databaseId,
                                           @RequestParam(defaultValue = "false") boolean includeInternal,
                                           Authentication authentication) {
@@ -178,16 +196,21 @@ public class AnalysisController {
     }
 
     @GetMapping("/alerts")
+    @Operation(summary = "Get alert rules and history")
     public AlertSummary alerts() {
         return new AlertSummary(alertingPersistenceService.listRules(), alertingPersistenceService.listHistory());
     }
 
     @GetMapping("/alerts/rules")
+    @Operation(summary = "List alert rules")
     public List<AlertRuleSummary> alertRules() {
         return alertingPersistenceService.listRules();
     }
 
     @PostMapping("/alerts/rules")
+    @Operation(summary = "Create an alert rule",
+            description = "Requires a signed-in user. Supply X-DBInsight-Token unless the session has ADMIN role.",
+            security = @SecurityRequirement(name = "sessionCookie"))
     public AlertRuleSummary createAlertRule(@RequestHeader(value = "X-DBInsight-Token", required = false) String token,
                                           @RequestBody AlertRuleRequest request) {
         adminRequestGuard.requireAdminToken(token);
@@ -201,11 +224,14 @@ public class AnalysisController {
     }
 
     @GetMapping("/alerts/history")
+    @Operation(summary = "List alert history")
     public List<AlertEventSummary> alertHistory() {
         return alertingPersistenceService.listHistory();
     }
 
     @GetMapping("/recommendations")
+    @Operation(summary = "Get advisory recommendations", description = "Returns rule-based or optionally AI-assisted suggestions. Recommendations are never executed.",
+            security = @SecurityRequirement(name = "sessionCookie"))
     public LiveRecommendationResponse recommendations(@RequestParam(required = false) Long databaseId,
                                                       Authentication authentication) {
         requireTargetAccess(databaseId, authentication);
@@ -233,6 +259,9 @@ public class AnalysisController {
     }
 
     @PostMapping("/recommendations")
+    @Operation(summary = "Create a recommendation record",
+            description = "Requires a signed-in user. Supply X-DBInsight-Token unless the session has ADMIN role.",
+            security = @SecurityRequirement(name = "sessionCookie"))
     public RecommendationSummary createRecommendation(@RequestHeader(value = "X-DBInsight-Token", required = false) String token,
                                                    @RequestBody RecommendationRequest request) {
         adminRequestGuard.requireAdminToken(token);
@@ -246,6 +275,9 @@ public class AnalysisController {
     }
 
     @PatchMapping("/recommendations/{recommendationId}/status")
+    @Operation(summary = "Update recommendation review status",
+            description = "Requires a signed-in user. Supply X-DBInsight-Token unless the session has ADMIN role.",
+            security = @SecurityRequirement(name = "sessionCookie"))
     public RecommendationSummary updateRecommendationStatus(@RequestHeader(value = "X-DBInsight-Token", required = false) String token,
                                                           @PathVariable long recommendationId,
                                                           @RequestBody RecommendationStatusRequest request) {
