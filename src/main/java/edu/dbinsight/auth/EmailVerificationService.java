@@ -13,6 +13,8 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
@@ -25,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class EmailVerificationService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(EmailVerificationService.class);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Duration RESEND_DELAY = Duration.ofMinutes(1);
 
@@ -125,6 +128,7 @@ public class EmailVerificationService {
         try {
             mailSender.send(message);
         } catch (MailException exception) {
+            LOGGER.error("Failed to send email verification message.", exception);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Unable to send the verification email. Check the SMTP configuration and try again.",
                     exception);
