@@ -1,6 +1,7 @@
 package edu.dbinsight.security;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,6 +32,14 @@ class SecurityConfigCorsTest {
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type, x-dbinsight-token"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:3000"));
+    }
+
+    @Test
+    void invalidRegistrationReturnsValidationErrorInsteadOfBeingMaskedBySecurity() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\",\"email\":\"invalid\",\"password\":\"test-password\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

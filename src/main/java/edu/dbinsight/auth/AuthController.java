@@ -68,13 +68,7 @@ public class AuthController {
                     null);
         }
 
-        Authentication authentication = authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(email, password));
-        establishSession(authentication, httpRequest, httpResponse);
-
-        return new RegistrationResponse("Account created and signed in.", false,
-                new AuthResponse(user.getUserId(), user.getName(), user.getEmail(), user.getRole(),
-                        "Account created and signed in."));
+        return new RegistrationResponse("Account created. Please sign in.", false, null);
     }
 
     @PostMapping("/login")

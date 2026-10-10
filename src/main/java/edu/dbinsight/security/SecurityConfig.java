@@ -1,6 +1,7 @@
 package edu.dbinsight.security;
 
 import edu.dbinsight.persistence.AppUserRepository;
+import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -40,6 +41,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .securityContext(context -> context.securityContextRepository(securityContextRepository))
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login",
                                 "/api/auth/password/forgot", "/api/auth/password/reset",

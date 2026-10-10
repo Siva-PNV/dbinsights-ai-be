@@ -57,6 +57,32 @@ class AuthControllerSessionTest {
     }
 
     @Test
+    void registrationWithoutVerificationRequiresManualSignIn() {
+        AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
+        AppUserRepository appUserRepository = mock(AppUserRepository.class);
+        EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
+        when(emailVerificationService.register("Test User", "user@example.com", "StrongPass123"))
+                .thenReturn(new AppUserEntity("Test User", "user@example.com", "hash", "USER", Instant.now()));
+        when(emailVerificationService.isEnabled()).thenReturn(false);
+        AuthController controller = new AuthController(
+                authenticationManager,
+                appUserRepository,
+                new HttpSessionSecurityContextRepository(),
+                mock(PasswordResetService.class),
+                emailVerificationService);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        AuthController.RegistrationResponse result = controller.register(
+                new AuthController.RegisterRequest("Test User", "user@example.com", "StrongPass123"),
+                request, new MockHttpServletResponse());
+
+        assertEquals("Account created. Please sign in.", result.message());
+        assertNull(result.user());
+        assertNull(request.getSession(false));
+        verify(authenticationManager, never()).authenticate(any(Authentication.class));
+    }
+
+    @Test
     void passwordResetInvalidatesTheCurrentSession() {
         PasswordResetService passwordResetService = mock(PasswordResetService.class);
         AuthController controller = new AuthController(
