@@ -119,8 +119,8 @@ public class EmailVerificationService {
                 + tokenLifetime.toHours() + " hours:\n"
                 + verificationUrl + "\n\nIf you did not create this account, you can ignore this email.";
         try {
-            mailSender.send(message);
-        } catch (MailException exception) {
+            emailSender.send(fromAddress, user.getEmail(), "Verify your DBInsight email", text);
+        } catch (EmailDeliveryException exception) {
             LOGGER.error("Failed to send email verification message.", exception);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Unable to send the verification email. Check the email provider configuration and try again.",
