@@ -12,6 +12,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -22,6 +24,8 @@ import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class GeminiRecommendationGenerator implements AiRecommendationGenerator {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GeminiRecommendationGenerator.class);
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String apiKey;
@@ -37,7 +41,7 @@ public class GeminiRecommendationGenerator implements AiRecommendationGenerator 
             @Value("${app.ai.recommendations.enabled:false}") boolean enabled) {
         HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(45));
+        requestFactory.setReadTimeout(Duration.ofSeconds(90));
         this.restClient = restClientBuilder.baseUrl(baseUrl).requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
         this.apiKey = apiKey;
@@ -84,6 +88,7 @@ public class GeminiRecommendationGenerator implements AiRecommendationGenerator 
                     HttpStatus.BAD_GATEWAY,
                     geminiFailureMessage(exception.getStatusCode().value(), exception));
         } catch (RestClientException exception) {
+            LOGGER.error("Unable to reach the Google Gemini recommendation service.", exception);
             throw new AiRecommendationException(
                     HttpStatus.BAD_GATEWAY, "Unable to reach the Google Gemini recommendation service.", exception);
         } catch (JsonProcessingException exception) {
